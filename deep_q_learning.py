@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import random
 import gym
 import numpy as np
@@ -8,15 +7,55 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 import pandas as pd
 
+class State(object):
+  def __init__(self, time, inventory):
+    self.time = time # period (integer)
+    self.inventory = inventory # number of shares yet to be executed
+
+class Env(object):
+  def __init__(self, state, prices):
+    self.state = state
+    self.prices = prices
+    
+  def reset(self, number_of_shares):
+    self.state = State(0, number_of_shares)
+
+  def step(self, action):
+    '''
+    - action is an integer number of shares bought in one period
+    - step function should take an action and return the next state, the reward and done (done would mean that inventory is zero)
+    - also returns the immediate reward and the boolean done
+    '''
+    new_inventory = self.state.inventory - action
+    new_time = self.state.time + 1
+    reward = reward(self.state.inventory, action)
+    self.state = State(new_time, new_inventory)
+
+    return (self.state, reward, is_done)
+
+  def is_done():
+
+
+    return self.state.inventory == 0
+
+  def get_price(self, time):
+    return prices[time]
+
+  def reward(self, remaining_inventory, action, a=0.01):
+    return remaining_inventory*(get_price(time+1) -  get_price(time)) - a*(action**2)
+
 EPISODES = 1000
 
 def run():
+
   df_raw = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
   prices = np.array(df_raw['close'].to_numpy)
 
+  initial_state = State(inventory=1000, time=0)
+  env = Env(state=initial_state, prices=prices)
+
   inventory = 1000
-  time  = 10 #Hours
-  noOfSteps = 12
+  time  = 100 # multiples of 10 minutes
   state_space = np.array([time, inventory])
   action_space = np.array(list(range(0, len(inventory))))
   state_size = len(state_space)
@@ -35,6 +74,11 @@ def run():
           action = agent.act(state)
           next_state = (inventory - action)
           price_over_t = price[(time-1):(time+noOfSteps)] #price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
+          # if time%%12 == 0
+          #   action = agent.act(state)
+              reward = agent.reward(next_state, action, price_over_t,noOfSteps)
+          # else:
+          #   reward = agent.reward(next_state, action/12, price_over_t,noOfSteps)
           reward = agent.reward(next_state, action, price_over_t,noOfSteps)
           next_state = np.reshape(next_state, [1, state_size])  # ??? TODO
           done = True if inventory == 0 else False
@@ -50,15 +94,12 @@ def run():
       #     agent.save("./save/cartpole-dqn.h5")
       print("episode is finished")
 
-
-# class Env(object):
-  
 class DQNAgent:
     def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
-        self.memory = deque(maxlen=2000)
-        self.gamma = 0.95    # discount rate
+        self.memory = deque(maxlen=10000)
+        self.gamma = 0.95 # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
@@ -78,21 +119,12 @@ class DQNAgent:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state, inventory):
-        if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_size)
-        act_values = self.model.predict(state)
-        action = np.argmax(act_values[0])
-        if action > inventory:
-            action = inventory
-        return action
-
-    def reward(self, next_state, action, price, noOfTimeSteps, a = 0.01):
-        reward_over_t = []
-        for i in range(0, len(noOfTimeSteps)):
-            reward_t = next_state(price[i+1]-price[i]) - a((action/noOfTimeSteps)^2)
-            reward_over_t.append(reward_t)
-        return sum(reward_over_t)
+    def act(self, state):
+      # TODO: action size (if put later)
+      if np.random.rand() <= self.epsilon:
+          return random.randrange(self.action_size)
+      act_values = self.model.predict(state)
+      return np.argmax(act_values[0])
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
@@ -102,16 +134,10 @@ class DQNAgent:
                 target = (reward + self.gamma *
                           np.amax(self.model.predict(next_state)[0]))
             target_f = self.model.predict(state)
-            target_f[0][action] = target  #??? TODO
+            target_f[0][action] = target
             self.model.fit(state, target_f, epochs=1, verbose=0)
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
-
-    def load(self, name):
-        self.model.load_weights(name)
-
-    def save(self, name):
-        self.model.save_weights(name)
 
 if __name__ == "__main__":
   run()
