@@ -43,7 +43,7 @@ class DQNAgent:
 
     def reward(self, next_state, action, price, noOfTimeSteps, a = 0.01):
         reward_over_t = []
-        for i in range(0, len(noOfTimeSteps))
+        for i in range(0, len(noOfTimeSteps)):
             reward_t = next_state(price[i+1]-price[i]) - a((action/noOfTimeSteps)^2)
             reward_over_t.append(reward_t)
         return sum(reward_over_t)
@@ -88,10 +88,8 @@ if __name__ == "__main__":
         state = np.reshape(state, [1, state_size])  # what's the point??? TODO
         for time in range(500):
             action = agent.act(state)
-            next_state, reward, done, _ = env.step(action)  # what's the point of _?? TODO
             next_state = (inventory - action)
-            #note that price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
-            price_over_t = price[time:(time+noOfSteps)]
+            price_over_t = price[(time-1):(time+noOfSteps)] #price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
             reward = agent.reward(next_state, action, price_over_t,noOfSteps)
             next_state = np.reshape(next_state, [1, state_size])  # ??? TODO
             done = True if inventory == 0 else False
