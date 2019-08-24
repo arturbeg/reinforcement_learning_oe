@@ -32,12 +32,14 @@ class DQNAgent:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state):
+    def act(self, state, inventory):
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         act_values = self.model.predict(state)
         action = np.argmax(act_values[0])
-        return   # returns action
+        if action > inventory:
+            action = inventory
+        return action
 
     def reward(self, next_state, action, price, noOfTimeSteps, a = 0.01):
         reward_over_t = []
@@ -67,11 +69,11 @@ class DQNAgent:
 
 EPISODES = 1000
 if __name__ == "__main__":
-    Inventory = 1000
-    Time  = 10 #Hours
+    inventory = 1000
+    time  = 10 #Hours
     noOfSteps = 12
-    state_space = np.array([Time, Inventory])
-    action_space = np.array(list(range(0, len(Inventory))))
+    state_space = np.array([time, inventory])
+    action_space = np.array(list(range(0, len(inventory))))
     state_size = len(state_space)
     action_size = len(action_space)
     agent = DQNAgent(state_size, action_size)
@@ -87,12 +89,12 @@ if __name__ == "__main__":
         for time in range(500):
             action = agent.act(state)
             next_state, reward, done, _ = env.step(action)  # what's the point of _?? TODO
-            next_state = (Inventory - action)
+            next_state = (inventory - action)
             #note that price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
             price_over_t = price[time:(time+noOfSteps)]
             reward = agent.reward(next_state, action, price_over_t,noOfSteps)
             next_state = np.reshape(next_state, [1, state_size])  # ??? TODO
-            done = True if Inventory == 0
+            done = True if inventory == 0 else False
             agent.remember(state, action, reward, next_state, done)
             state = next_state
             if done:
