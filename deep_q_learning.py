@@ -38,10 +38,12 @@ class DQNAgent:
         act_values = self.model.predict(state)
         return np.argmax(act_values[0])  # returns action
 
-    def reward(self, next_state, action, price, alpha = 0.01, noOfTimeSteps = 12):
-        reward_t = []
+    def reward(self, next_state, action, price, noOfTimeSteps, a = 0.01):
+        reward_over_t = []
         for i in range(0, len(noOfTimeSteps))
-            reward_t[i] =
+            reward_t = next_state(price[i+1]-price[i]) - a((action/noOfTimeSteps)^2)
+            reward_over_t.append(reward_t)
+        return sum(reward_over_t)
 
     def replay(self, batch_size):
         minibatch = random.sample(self.memory, batch_size)
@@ -66,24 +68,28 @@ EPISODES = 1000
 if __name__ == "__main__":
     Inventory = 1000
     Time  = 10 #Hours
-    states = np.array([Time, Inventory])
-    actions = np.array(list(range(0, len(Inventory))))
-    state_size = len(states)
-    action_size = len(actions)
+    noOfSteps = 12
+    state_space = np.array([Time, Inventory])
+    action_space = np.array(list(range(0, len(Inventory))))
+    state_size = len(state_space)
+    action_size = len(action_space)
     agent = DQNAgent(state_size, action_size)
     # agent.load("./save/cartpole-dqn.h5")
     done = False
     batch_size = 32
+    price = np.array([]) #insert full price time series
 
     print("training is starting")
     for e in range(EPISODES):
-        state = states
+        state = state_space
         state = np.reshape(state, [1, state_size])  # what's the point??? TODO
         for time in range(500):
             action = agent.act(state)
             next_state, reward, done, _ = env.step(action)  # what's the point of _?? TODO
             next_state = (Inventory - action)
-            # reward =
+            #note that price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
+            price_over_t = price[time:(time+NoOfSteps)]
+            reward =
 
             reward = reward if not done else -10
             next_state = np.reshape(next_state, [1, state_size])  # ??? TODO
