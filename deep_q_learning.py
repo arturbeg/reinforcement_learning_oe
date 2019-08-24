@@ -36,7 +36,8 @@ class DQNAgent:
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_size)
         act_values = self.model.predict(state)
-        return np.argmax(act_values[0])  # returns action
+        action = np.argmax(act_values[0])
+        return   # returns action
 
     def reward(self, next_state, action, price, noOfTimeSteps, a = 0.01):
         reward_over_t = []
@@ -88,11 +89,10 @@ if __name__ == "__main__":
             next_state, reward, done, _ = env.step(action)  # what's the point of _?? TODO
             next_state = (Inventory - action)
             #note that price vector should include the following times [t-1, t, t+1, ..., t+noOfSteps]
-            price_over_t = price[time:(time+NoOfSteps)]
-            reward =
-
-            reward = reward if not done else -10
+            price_over_t = price[time:(time+noOfSteps)]
+            reward = agent.reward(next_state, action, price_over_t,noOfSteps)
             next_state = np.reshape(next_state, [1, state_size])  # ??? TODO
+            done = True if Inventory == 0
             agent.remember(state, action, reward, next_state, done)
             state = next_state
             if done:
