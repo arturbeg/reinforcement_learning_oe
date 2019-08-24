@@ -6,6 +6,10 @@ from collections import deque
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
+import pandas as pd
+
+df_raw = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
+prices = np.array(df_raw['close'].to_numpy)
 
 class DQNAgent:
     def __init__(self, state_size, action_size):
