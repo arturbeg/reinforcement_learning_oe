@@ -7,6 +7,10 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 import pandas as pd
 
+EPISODES = 10
+INITIAL_INVENTORY = 100
+TEN_MINUTES_IN_ONE_DAY = 42
+
 class State(object):
   def __init__(self, time, inventory):
     self.time = time # period (integer)
@@ -26,7 +30,7 @@ class Env(object):
     return self.state 
 
   def reset_inventory(self):
-    self.state.number_of_shares = INITIAL_INVENTORY
+    self.state.inventory = INITIAL_INVENTORY
     return self.state
 
   def step(self, action):
@@ -35,12 +39,9 @@ class Env(object):
     - step function should take an action and return the next state, the reward and done (done would mean that inventory is zero)
     - also returns the immediate reward and the boolean done
     '''
-    new_inventory = self.state.inventory - action
-    print(new_inventory)
-    new_time = self.state.time + 1
     reward = self.reward(self.state.inventory, action)
-    self.state = State(new_time, new_inventory)
-
+    self.state.time = self.state.time + 1
+    self.state.inventory = self.state.inventory - action
     return (self.state, reward, self.is_done())
 
   def is_done(self):
@@ -53,10 +54,6 @@ class Env(object):
   def reward(self, remaining_inventory, action, a=0.01):
     return remaining_inventory*(self.get_price(self.state.time+1) -  self.get_price(self.state.time)) - a*(action**2)
 
-EPISODES = 1000
-INITIAL_INVENTORY = 100
-TEN_MINUTES_IN_ONE_DAY = 42
-
 def run():
 
   df_raw = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
@@ -67,7 +64,7 @@ def run():
   env = Env(state=initial_state, prices=prices)
 
   state_size = 2
-  action_size = env.state.inventory
+  action_size = INITIAL_INVENTORY
   agent = DQNAgent(state_size, action_size)
 
   done = False  
@@ -82,6 +79,7 @@ def run():
 
     state = np.reshape(state.state_as_list(), [1, state_size])
 
+
     for time in range(TEN_MINUTES_IN_ONE_DAY):
       action = agent.act(state)
       next_state, reward, done = env.step(action)
@@ -89,15 +87,16 @@ def run():
       next_state = np.reshape(next_state, [1, state_size])
       agent.remember(state, action, reward, next_state, done)
       state = next_state
+      print("Inventory is: " + str(env.state.inventory))
+      print("Time is: " + str(env.state.time))
       # TODO: make sure done is implemented correctly
       if done:
         print("DONE")
-        print("episode: {}/{}, score: {}, e: {:.2}"
+        print("episode: {}/{}, time: {}, e: {:.2}"
           .format(e, EPISODES, time, agent.epsilon))
         break
       if len(agent.memory) >  batch_size:
         agent.replay(batch_size)
-
   
 class DQNAgent:
     def __init__(self, state_size, action_size):
@@ -138,8 +137,10 @@ class DQNAgent:
       act_values = self.model.predict(state)
       # put docstring specifying what act returns
       action = np.argmax(act_values[0])
-      # TODO: make sure this works properly
-      print(state[0][1])
+      # TODO: make sure this works properly)
+      print("Action (unadjusted): " + str(action))
+      print("State Inventory: " + str(state[0][1]))
+      print("SHIT")
       if action > state[0][1]:
         return state[0][1]
       else:
