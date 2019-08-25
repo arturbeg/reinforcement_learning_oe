@@ -12,6 +12,7 @@ INITIAL_INVENTORY = 100
 TEN_MINUTES_IN_ONE_DAY = 42
 
 # TODO: put loggers for future debugging
+# TODO: make sure by the end of the day no shares are left in the inventory
 class State(object):
   def __init__(self, time, inventory):
     self.time = time # period (integer)
@@ -81,7 +82,7 @@ def run():
     state = np.reshape(state.state_as_list(), [1, state_size])
 
     for time in range(TEN_MINUTES_IN_ONE_DAY):
-      action = agent.act(state)
+      action = agent.act(state=state, time=time)
       next_state, reward, done = env.step(action)
       next_state = next_state.state_as_list()
       next_state = np.reshape(next_state, [1, state_size])
@@ -129,7 +130,9 @@ class DQNAgent:
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
 
-    def act(self, state):
+    def act(self, state, time):
+      if time == TEN_MINUTES_IN_ONE_DAY:
+        return state[0][1]
       # here the state is already a numpy array
       # TODO: action size (if put later)
       if np.random.rand() <= self.epsilon:
