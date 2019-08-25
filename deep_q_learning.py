@@ -34,6 +34,7 @@ class Env(object):
     return (self.state, reward, is_done)
 
   def is_done():
+      #TODO: or if the time constraint finished. Add in the action function that it should execute all of the remaining inventory at the last time step
     return self.state.inventory == 0
 
   def get_price(self, time):
@@ -59,7 +60,12 @@ def run():
   done = False
   batch_size = 32
 
+  #Review pseudo code for any more tweaks: e.g: Pre-train Q function on boundary cases and rest initialise with random weights
+
   # for e in range(EPISODES):
+    #for time_period_for_order in all_time_periods:
+        #for time in time_period_for_order:
+
   
 class DQNAgent:
     def __init__(self, state_size, action_size, time_to_execute):
