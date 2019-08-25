@@ -12,13 +12,22 @@ class State(object):
     self.time = time # period (integer)
     self.inventory = inventory # number of shares yet to be executed
 
+  def state_as_list(self):
+    # return the state in the correct format
+    return [self.time, self.inventory]
+
 class Env(object):
   def __init__(self, state, prices):
     self.state = state
     self.prices = prices
     
-  def reset(self, number_of_shares):
-    self.state = State(0, number_of_shares)
+  def full_reset(self):
+    self.state = State(0, INITIAL_INVENTORY)
+    return self.state 
+
+  def reset_inventory(self):
+    self.state.number_of_shares = INITIAL_INVENTORY
+    return self.state
 
   def step(self, action):
     '''
@@ -27,48 +36,71 @@ class Env(object):
     - also returns the immediate reward and the boolean done
     '''
     new_inventory = self.state.inventory - action
+    print(new_inventory)
     new_time = self.state.time + 1
-    reward = reward(self.state.inventory, action)
+    reward = self.reward(self.state.inventory, action)
     self.state = State(new_time, new_inventory)
 
-    return (self.state, reward, is_done)
+    return (self.state, reward, self.is_done())
 
-  def is_done():
+  def is_done(self):
       #TODO: or if the time constraint finished. Add in the action function that it should execute all of the remaining inventory at the last time step
-    return self.state.inventory == 0
+    return self.state.inventory <= 0
 
   def get_price(self, time):
-    return prices[time]
+    return self.prices[time]
 
   def reward(self, remaining_inventory, action, a=0.01):
-    return remaining_inventory*(get_price(time+1) -  get_price(time)) - a*(action**2)
+    return remaining_inventory*(self.get_price(self.state.time+1) -  self.get_price(self.state.time)) - a*(action**2)
 
 EPISODES = 1000
+INITIAL_INVENTORY = 100
+TEN_MINUTES_IN_ONE_DAY = 42
 
 def run():
 
   df_raw = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
-  prices = np.array(df_raw['close'].to_numpy)
 
-  initial_state = State(inventory=100, time=0)
+  prices = np.array(df_raw['close'].to_numpy())
+
+  initial_state = State(inventory=INITIAL_INVENTORY, time=0)
   env = Env(state=initial_state, prices=prices)
 
   state_size = 2
   action_size = env.state.inventory
   agent = DQNAgent(state_size, action_size)
 
-  done = False
+  done = False  
   batch_size = 32
 
-  #Review pseudo code for any more tweaks: e.g: Pre-train Q function on boundary cases and rest initialise with random weights
+  for e in range(EPISODES):
 
-  # for e in range(EPISODES):
-    #for time_period_for_order in all_time_periods:
-        #for time in time_period_for_order:
+    if df_raw.shape[0] - env.state.time <= TEN_MINUTES_IN_ONE_DAY + 1:
+      state = env.full_reset()
+    else:
+      state = env.reset_inventory()
+
+    state = np.reshape(state.state_as_list(), [1, state_size])
+
+    for time in range(TEN_MINUTES_IN_ONE_DAY):
+      action = agent.act(state)
+      next_state, reward, done = env.step(action)
+      next_state = next_state.state_as_list()
+      next_state = np.reshape(next_state, [1, state_size])
+      agent.remember(state, action, reward, next_state, done)
+      state = next_state
+      # TODO: make sure done is implemented correctly
+      if done:
+        print("DONE")
+        print("episode: {}/{}, score: {}, e: {:.2}"
+          .format(e, EPISODES, time, agent.epsilon))
+        break
+      if len(agent.memory) >  batch_size:
+        agent.replay(batch_size)
 
   
 class DQNAgent:
-    def __init__(self, state_size, action_size, time_to_execute):
+    def __init__(self, state_size, action_size):
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=10000)
@@ -77,7 +109,7 @@ class DQNAgent:
         self.epsilon_min = 0.01
         self.epsilon_decay = 0.995
         self.learning_rate = 0.001
-        self.time_to_execute = 42 # multiples of 10 minutes: 7 hours
+        # self.time_to_execute = 42 # multiples of 10 minutes: 7 hours
         self.model = self._build_model()
 
     def _build_model(self):
@@ -99,24 +131,35 @@ class DQNAgent:
         self.memory.append((state, action, reward, next_state, done))
 
     def act(self, state):
+      # here the state is already a numpy array
       # TODO: action size (if put later)
       if np.random.rand() <= self.epsilon:
           return random.randrange(self.action_size)
       act_values = self.model.predict(state)
-      return np.argmax(act_values[0])
+      # put docstring specifying what act returns
+      action = np.argmax(act_values[0])
+      # TODO: make sure this works properly
+      print(state[0][1])
+      if action > state[0][1]:
+        return state[0][1]
+      else:
+        return action
 
     def replay(self, batch_size):
-        minibatch = random.sample(self.memory, batch_size)
-        for state, action, reward, next_state, done in minibatch:
-            target = reward
-            if not done:
-                target = (reward + self.gamma *
-                          np.amax(self.model.predict(next_state)[0]))
-            target_f = self.model.predict(state)
-            target_f[0][action] = target
-            self.model.fit(state, target_f, epochs=1, verbose=0)
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
+      '''
+        replay uses the memory values to train the network
+      '''
+      minibatch = random.sample(self.memory, batch_size)
+      for state, action, reward, next_state, done in minibatch:
+          target = reward
+          if not done:
+              target = (reward + self.gamma *
+                        np.amax(self.model.predict(next_state)[0]))
+          target_f = self.model.predict(state)
+          target_f[0][action] = target
+          self.model.fit(state, target_f, epochs=1, verbose=0)
+      if self.epsilon > self.epsilon_min:
+          self.epsilon *= self.epsilon_decay
 
 if __name__ == "__main__":
   run()
