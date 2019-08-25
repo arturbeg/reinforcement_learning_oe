@@ -49,7 +49,7 @@ def run():
             next_state = np.reshape(next_state, [1, state_size])
             agent.remember(state, action, reward, next_state, done)
             state = next_state
-            PandL_agent_array = np.append(PandL_agent_array, env.PandL_agent(action))
+            PandL_agent_array = np.append(PandL_agent_array, env.PandL(action, env.state.time))
             print("Inventory is: " + str(env.state.inventory))
             print("Time is: " + str(env.state.time))
             # TODO: make sure done is implemented correctly
@@ -66,7 +66,7 @@ def run():
         twap_actions = np.array([])
         for time in range(TEN_MINUTES_IN_ONE_DAY):
             twap_actions= np.append(twap_actions,INITIAL_INVENTORY/TEN_MINUTES_IN_ONE_DAY)
-            PandL_TWAP_array = np.append(PandL_TWAP_array, env.PandL_TWAP(INITIAL_INVENTORY, TEN_MINUTES_IN_ONE_DAY, time_counter))
+            PandL_TWAP_array = np.append(PandL_TWAP_array, env.PandL(INITIAL_INVENTORY/TEN_MINUTES_IN_ONE_DAY, time_counter))
             time_counter += 1
 
     total_PandL_agent = sum(PandL_agent_array)
@@ -117,12 +117,9 @@ class Env(object):
   def reward(self, remaining_inventory, action, a=A):
     return remaining_inventory*(self.get_price(self.state.time+1) -  self.get_price(self.state.time)) - a*(action**2)
 
-  def PandL_agent(self, action, a = A):
-      return action*self.get_price(self.state.time) - a*(action**2)
+  def PandL(self, action,time, a = A):
+      return action*self.get_price(time) - a*(action**2)
 
-  def PandL_TWAP(self, initial_inventory, time_constraint, time, a = A):
-        action = initial_inventory/time_constraint
-        return action * self.get_price(time) - a*(action**2)
 
 
 
