@@ -7,10 +7,11 @@ from keras.layers import Dense
 from keras.optimizers import Adam
 import pandas as pd
 
-EPISODES = 10
+EPISODES = 1000
 INITIAL_INVENTORY = 100
 TEN_MINUTES_IN_ONE_DAY = 42
 
+# TODO: put loggers for future debugging
 class State(object):
   def __init__(self, time, inventory):
     self.time = time # period (integer)
@@ -79,7 +80,6 @@ def run():
 
     state = np.reshape(state.state_as_list(), [1, state_size])
 
-
     for time in range(TEN_MINUTES_IN_ONE_DAY):
       action = agent.act(state)
       next_state, reward, done = env.step(action)
@@ -133,7 +133,11 @@ class DQNAgent:
       # here the state is already a numpy array
       # TODO: action size (if put later)
       if np.random.rand() <= self.epsilon:
-          return random.randrange(self.action_size)
+          action = random.randrange(self.action_size)
+          if action > state[0][1]:
+            return state[0][1]
+          else:
+            return action
       act_values = self.model.predict(state)
       # put docstring specifying what act returns
       action = np.argmax(act_values[0])
