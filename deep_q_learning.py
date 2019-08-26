@@ -8,7 +8,7 @@ from keras.optimizers import Adam
 import pandas as pd
 import collections
 
-EPISODES = 100
+EPISODES = 10
 INITIAL_INVENTORY = 100
 TEN_MINUTES_IN_ONE_DAY = 42
 A = 0.01
@@ -72,6 +72,7 @@ def run():
     total_PandL_agent = sum(PandL_agent_array)
     total_PandL_TWAP = sum(PandL_TWAP_array)
     PandL_vs_TWAP = ((total_PandL_agent-total_PandL_TWAP)/total_PandL_TWAP)*100
+    agent.save('model_weights.h5')
     print("PandL_vs_TWAP is {}".format(PandL_vs_TWAP) )
 
 class State(object):
@@ -190,6 +191,23 @@ class DQNAgent:
       if self.epsilon > self.epsilon_min:
           self.epsilon *= self.epsilon_decay
 
+    def load(self, name):
+        self.model.load_weights(name)
+
+    def save(self, name):
+        self.model.save_weights(name)
+        print('statrt debugging)')
+        state_time = np.array([item[0][0][0] for item in list(self.memory)])
+        print(state_time)
+        state_inventory = np.array([item[0][0][1] for item in list(self.memory)])
+        actions = np.array([item[1] for item in list(self.memory)])
+        rewards = np.array([item[2] for item in list(self.memory)])
+        next_state_time = np.array([item[3][0][0] for item in list(self.memory)])
+        next_state_inventory = np.array([item[3][0][1] for item in list(self.memory)])
+        done = np.array([item[4] for item in list(self.memory)])
+        memory_df = pd.DataFrame({'state_time': state_time, 'state_inventory': state_inventory, 'action': actions, 'reward': rewards,'next_state - Inventory': next_state_time, 'next_state - Time': next_state_inventory, 'done':done})
+        print(memory_df)
+        memory_df.to_csv('Memory.csv')
 
 
 if __name__ == "__main__":
