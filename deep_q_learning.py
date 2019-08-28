@@ -6,22 +6,22 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.optimizers import Adam
 import pandas as pd
-from sklearn import preprocessing
 import collections
+# TODO: put loggers for future debugging
 
 def normalise(x):
     return (x-min(x))/(max(x)-min(x))
 
-DF_RAW = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
-
-EPISODES = 100
+EPISODES = 1000
 INITIAL_INVENTORY = 101
 INITIAL_INVENTORY_SCALED = 1
 TIME_CONSTRAINT_FOR_EXECUTION = 50
 A = 0.01
 TRAINING = True
+FILENAME = "{}ep_basic_NN".format(EPISODES)
 
 # DATA PREP
+DF_RAW = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
 EXECUTION_TIMES_SCALED = normalise(np.array(range(TIME_CONSTRAINT_FOR_EXECUTION)))
 TIME_CONSTRAINT_FOR_EXECUTION_SCALED = max(EXECUTION_TIMES_SCALED)
 TIME_POINTS_FOR_EXECUTION = len(EXECUTION_TIMES_SCALED)
@@ -37,7 +37,6 @@ else:
 
 PRICES = np.array(DF['close'].to_numpy())
 
-# TODO: put loggers for future debugging
 def run():
 
     initial_state = State(inventory=INITIAL_INVENTORY_SCALED, time=0)
@@ -45,7 +44,9 @@ def run():
 
     state_size = 2
     action_size = INITIAL_INVENTORY
-    agent = DQNAgent(state_size, action_size)
+    agent = DQNAgent(state_size, action_size, TRAINING)
+    if TRAINING != True:
+        agent.load("{}_weights.h5".format(FILENAME))
     twap = TWAP(INITIAL_INVENTORY_SCALED, TIME_POINTS_FOR_EXECUTION)
 
     done = False
@@ -72,21 +73,21 @@ def run():
 
             PandL_agent_array = np.append(PandL_agent_array, env.PandL(action))
             PandL_TWAP_array = np.append(PandL_TWAP_array, env.PandL(twap.act()))
-            PandL_vs_TWAP_array = np.append(PandL_vs_TWAP_array, ((PandL_agent_array[env.real_time-1] - PandL_TWAP_array[env.real_time-1]) / PandL_TWAP_array[env.real_time-1]) * 100)
+            PandL_vs_TWAP_array = np.append(PandL_vs_TWAP_array, ((PandL_agent_array[env.real_time-1- REAL_TIME] - PandL_TWAP_array[env.real_time-1- REAL_TIME]) / PandL_TWAP_array[env.real_time-1- REAL_TIME]) * 100)
 
             if done:
                 print("DONE")
-                print("episode: {}/{}, P&L_vs_TWAP: {}%, time: {}, e: {:.2}"
-                      .format(e, EPISODES, PandL_vs_TWAP_array[env.real_time-1], time, agent.epsilon))
+                print("episode: {}/{}, P&L_vs_TWAP: {}%, time: {}, e: {:.2}".format(e, EPISODES, PandL_vs_TWAP_array[env.real_time-1-REAL_TIME], time, agent.epsilon))
                 break
-            if len(agent.memory) > batch_size:
+            if (len(agent.memory) > batch_size and TRAINING == True):
                 agent.replay(batch_size)
 
     total_PandL_agent = sum(PandL_agent_array)
     total_PandL_TWAP = sum(PandL_TWAP_array)
     PandL_vs_TWAP = ((total_PandL_agent-total_PandL_TWAP)/total_PandL_TWAP)*100
-    agent.save('model_weights.h5', PandL_vs_TWAP_array,PandL_agent_array, PandL_TWAP_array)
+    agent.save("{}_weights.h5".format(FILENAME), PandL_vs_TWAP_array,PandL_agent_array, PandL_TWAP_array)
     print("PandL_vs_TWAP is {}%".format(PandL_vs_TWAP) )
+
 
 class State(object):
   """"
@@ -132,7 +133,7 @@ class Env(object):
     '''
     reward = self.reward(self.state.inventory, action, self.real_time)
     self.state.time = round(self.state.time + self.time_constraint_for_execution/self.time_points_for_execution, 2)
-    self.real_time = (self.real_time + 1) % self.end_time
+    self.real_time = (self.real_time + 1) if (self.real_time +1) % self.end_time != 0 else REAL_TIME
     self.state.inventory = round(self.state.inventory - action,2)
     return (self.state, reward, self.is_done())
 
@@ -140,7 +141,7 @@ class Env(object):
     return self.state.time == self.time_constraint_for_execution  #to make sure our agent is comparable with TWAP time-wise
 
   def get_price(self):
-    return self.prices[self.real_time]
+    return self.prices[self.real_time - REAL_TIME]
 
   def reward(self, remaining_inventory, action, a=A):
     return remaining_inventory*(self.get_price() -  self.get_price()) - a*(action**2)
@@ -149,13 +150,13 @@ class Env(object):
       return action*self.get_price() - a*(action**2)
 
 class DQNAgent:
-    def __init__(self, state_size, action_size):
+    def __init__(self, state_size, action_size, TRAINING):
         self.state_size = state_size
         self.action_size = action_size
         self.memory = deque(maxlen=10000)
         self.gamma = 0.99 # discount rate
-        self.epsilon = 1.0  # exploration rate
-        self.epsilon_min = 0.01
+        self.epsilon = 1.0  if TRAINING else 0.0
+        self.epsilon_min = 0.01 if TRAINING else 0.0
         self.epsilon_decay = 0.995
         self.learning_rate = 0.001
         # self.time_to_execute = 42 # multiples of 10 minutes: 7 hours
@@ -193,15 +194,16 @@ class DQNAgent:
               p = (1/TIME_POINTS_FOR_EXECUTION)/(time_constraint_for_execution - time)
               action = np.random.binomial(n, p)
               action =  np.linspace(0,1,101)[action] #scale back action to a normalised action
+              print("E-greedy action " + str(action))
           elif egreedy == 'Uniform':
               action = random.randrange(self.action_size)
       else:
           act_values = self.model.predict(state) # put docstring specifying what act returns
-          action = np.argmax(act_values[0])
+          action = np.argmax(act_values[0])/(INITIAL_INVENTORY-1)
+          print("Optimal action " + str(action))
 
       if action > inventory:
           action = inventory
-      print("action is: " + str(action))
       return round(action,2)
 
     def replay(self, batch_size):
@@ -216,7 +218,6 @@ class DQNAgent:
                         np.amax(self.model.predict(next_state)[0]))
           target_f = self.model.predict(state)
           action_range = np.linspace(0, 1, 101)
-          print("Minibatch action is: " + str(action))
           action_index = [i for i in range(len(action_range)) if round(action_range[i].item(),2) == action][0]
           target_f[0][action_index] = target
           self.model.fit(state, target_f, epochs=1, verbose=0)
@@ -237,9 +238,11 @@ class DQNAgent:
         done = np.array([item[4] for item in list(self.memory)])
         memory_df = pd.DataFrame({'state_time': state_time, 'state_inventory': state_inventory, 'action': actions, 'reward': rewards,'next_state - Inventory': next_state_time, 'next_state - Time': next_state_inventory, 'done':done, 'PandL_vs_TWAP': PandL_vs_TWAP, 'PandL_agent': PandL_agent, 'PandL_TWAP': PandL_TWAP})
         print(memory_df)
-        memory_df.to_csv('MemoryAndP&L.csv')
-
+        memory_df.to_csv('MemoryAndP&L_{}Train={}.csv'.format(EPISODES,TRAINING))
 
 
 if __name__ == "__main__":
-  run()
+    run()
+
+
+
