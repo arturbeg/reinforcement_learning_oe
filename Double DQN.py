@@ -8,6 +8,8 @@ from keras.optimizers import Adam
 import pandas as pd
 import collections
 from keras import backend as K
+import tensorflow as tf
+import matplotlib.pyplot as plt
 K.clear_session()
 
 
@@ -15,7 +17,7 @@ def normalise(x):
     return (x-min(x))/(max(x)-min(x))
 
 #Code Controls
-EPISODES = 1000
+EPISODES = 500
 MEMORY = 100000
 INITIAL_INVENTORY = 21
 INITIAL_INVENTORY_SCALED = 1
@@ -26,13 +28,13 @@ TRAINING = True
 TRAIN_BOUNDARIES= False
 LOAD_PRETRAINED_WEIGHTS = True
 
-PANDL_REWARD = True
+PANDL_REWARD = False
 EGREEDY = "Binomial"
-NN = "NN=3_NN"
-OPTIMIZER = 'Adam'
-FILENAME = "{}ep_{}_{}A={}Actions={}TimeConstr={}Opt={}REW=".format(EPISODES,NN, EGREEDY,A, INITIAL_INVENTORY, TIME_CONSTRAINT_FOR_EXECUTION, OPTIMIZER,str(PANDL_REWARD))
-BATCH_SIZE = 128
+NN = "NN=6_NN"
+OPTIMIZER = 'RMSprop'
+FILENAME = "DDQN{}ep_{}_{}A={}Actions={}TimeConstr={}Opt={}REW=".format(EPISODES,NN, EGREEDY,A, INITIAL_INVENTORY, TIME_CONSTRAINT_FOR_EXECUTION, OPTIMIZER,str(PANDL_REWARD))
 STATE_SIZE = 2
+BATCH_SIZE = 64
 
 # DATA PREP
 DF_RAW = pd.read_csv('./Data_Sets/APPL10minTickData.csv', header=0)
@@ -68,7 +70,7 @@ def run():
     if TRAINING != True:
         agent.load("{}_weights.h5".format(FILENAME))
     if (TRAINING == True and LOAD_PRETRAINED_WEIGHTS == True):
-        agent.load("100ep_NN=3_NN_UniformA=0.01Actions=21TimeConstr=11Opt=RMSpropREW=_weights.h5")
+        agent.load("DDQN25ep_NN=6_NN_BinomialA=0.01Actions=21TimeConstr=11Opt=RMSpropREW=_weights.h5")
     twap = TWAP(INITIAL_INVENTORY_SCALED, TIME_POINTS_FOR_EXECUTION)
 
     done = False
@@ -106,6 +108,7 @@ def run():
             rewards_array = np.append(rewards_array, reward)
 
             if done:
+                agent.update_target_model()
                 print("DONE")
                 print("episode: {}/{}, P&L_vs_TWAP: {}%, time: {}, e: {:.2}".format(e, EPISODES, PandL_vs_TWAP_array[env.real_time-1-REAL_TIME], time, agent.epsilon))
                 avg_rewards = np.append(avg_rewards, np.mean(rewards_array))
@@ -121,10 +124,11 @@ def run():
 
     avg_rewards_df = pd.DataFrame({'avg_rewards': avg_rewards})
     print("Avg_rewards are {}".format(avg_rewards))
-    avg_rewards_df.to_csv('avg_rewards_{}Train={}NN={}REW=.csv'.format(EPISODES, TRAINING,NN, str(PANDL_REWARD)))
+    avg_rewards_df.to_csv('avg_rewards_DDQN{}Train={}NN={}REW=.csv'.format(EPISODES, TRAINING,NN, str(PANDL_REWARD)))
 
-    agent.save("{}_weights.h5".format(FILENAME), PandL_vs_TWAP_array,PandL_agent_array, PandL_TWAP_array)
-
+    agent.save("DDQN{}_weights.h5".format(FILENAME), PandL_vs_TWAP_array,PandL_agent_array, PandL_TWAP_array)
+    plt.plot(avg_rewards)
+    plt.show()
 
 
 class State(object):
@@ -214,17 +218,34 @@ class DQNAgent:
         self.epsilon_decay = 0.995
         self.learning_rate = 0.001
         self.model = self._build_model()
+        self.target_model = self._build_model()
+        self.update_target_model()
 
+    def _huber_loss(self, y_true, y_pred, clip_delta=1.0):
+        error = y_true - y_pred
+        cond  = K.abs(error) <= clip_delta
+
+        squared_loss = 0.5 * K.square(error)
+        quadratic_loss = 0.5 * K.square(clip_delta) + clip_delta * (K.abs(error) - clip_delta)
+
+        return K.mean(tf.where(cond, squared_loss, quadratic_loss))
     def _build_model(self):
         # Neural Net for Deep-Q learning Model
         model = Sequential()
         model.add(Dense(20, input_dim=self.state_size, activation='relu'))
         model.add(Dense(20, activation='relu'))
         model.add(Dense(20, activation='relu'))
+        model.add(Dense(20, activation='relu'))
+        model.add(Dense(20, activation='relu'))
+        model.add(Dense(20, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
-        model.compile(loss='mse',
+        model.compile(loss=self._huber_loss,
                       optimizer=OPTIMIZER)
         return model
+
+    def update_target_model(self):
+        # copy weights from model to target_model
+        self.target_model.set_weights(self.model.get_weights())
 
     def remember(self, state, action, reward, next_state, done):
         self.memory.append((state, action, reward, next_state, done))
@@ -282,15 +303,17 @@ class DQNAgent:
       '''
       minibatch = random.sample(self.memory, batch_size)
       for state, action, reward, next_state, done in minibatch:
-          target = reward
-          if not done:
-              target = (reward + self.gamma *
-                        np.amax(self.model.predict(next_state)[0]))
-          target_f = self.model.predict(state)
+          target = self.model.predict(state)
           action_range = np.linspace(0, 1, INITIAL_INVENTORY)
-          action_index = [i for i in range(len(action_range)) if round(action_range[i].item(),2) == action][0]
-          target_f[0][action_index] = target
-          self.model.fit(state, target_f, epochs=1, verbose=0)
+          action_index = [i for i in range(len(action_range)) if round(action_range[i].item(), 2) == action][0]
+          if done:
+              target[0][action_index] = reward
+          else:
+              # a = self.model.predict(next_state)[0]
+              t = self.target_model.predict(next_state)[0]
+              target[0][action_index] = reward + self.gamma * np.amax(t)
+              # target[0][action] = reward + self.gamma * t[np.argmax(a)]
+          self.model.fit(state, target, epochs=1, verbose=0)
       if self.epsilon > self.epsilon_min:
           self.epsilon *= self.epsilon_decay
 
@@ -315,9 +338,8 @@ class DQNAgent:
         memory_df = pd.DataFrame({'state_time': state_time, 'state_inventory': state_inventory, 'action': actions, 'reward': rewards,'next_state - Inventory': next_state_time, 'next_state - Time': next_state_inventory, 'done':done})
         PandL_df = pd.DataFrame({'PandL_vs_TWAP': PandL_vs_TWAP, 'PandL_agent': PandL_agent, 'PandL_TWAP': PandL_TWAP})
         print(memory_df)
-        memory_df.to_csv('Memory_{}Train={}.csv'.format(EPISODES,TRAINING))
-        PandL_df.to_csv('P&L_{}Train={}.csv'.format(EPISODES, TRAINING))
-
+        memory_df.to_csv('DDQNMemory_{}Train={}.csv'.format(EPISODES,TRAINING))
+        PandL_df.to_csv('DDQNP&L_{}Train={}.csv'.format(EPISODES, TRAINING))
 
 if __name__ == "__main__":
     run()
