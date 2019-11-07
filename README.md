@@ -1,4 +1,4 @@
-# Reinforcment Learning For Optimal Trade Execution paper
+# Reinforcement Learning For Optimal Trade Execution paper
 
 This paper was written as part of the Applied Project of the MSc Risk Management & Financial Engineering at Imperial College London.
 
